@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "esnext", // Queremos o JavaScript mais moderno possível
+    "module": "nodenext", // O módulo de node que entende "type": "module"
+    "rootDir": "./src", // Todo nosso código-fonte ficará na pasta 'src'
+
+    "strict": true, // Habilita todas as regras mais rígidas do TS
+    "skipLibCheck": true, // Não checar os tipos das bibliotecas (mais rápido)
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"] // Só compilar o que estiver na pasta 'src'
+}

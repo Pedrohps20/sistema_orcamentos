@@ -1,0 +1,20 @@
+// Este é o seu arquivo de schema do Prisma,
+// aprenda mais sobre ele na documentação: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Informa que estamos usando sqlite
+  url      = env("DATABASE_URL") // Pega a URL do arquivo .env
+}
+
+// Nosso modelo de dados para a tabela de Produtos
+model Product {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique // O nome do produto deve ser único
+  price Float
+
+  @@map("products") // Garante que o nome da tabela no banco seja "products"
+}

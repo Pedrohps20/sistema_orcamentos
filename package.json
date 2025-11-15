@@ -1,0 +1,30 @@
+{
+  "name": "sistema_orcamentos",
+  "version": "1.0.0",
+  "description": "Projeto Inicial",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pedrohps20/sistema_orcamentos.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Pedrohps20/sistema_orcamentos/issues"
+  },
+  "homepage": "https://github.com/Pedrohps20/sistema_orcamentos#readme",
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prisma": "^6.19.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
