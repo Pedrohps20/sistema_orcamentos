@@ -1,5 +1,8 @@
 import { PrismaClient, Product } from '@prisma/client';
 
+// (NOVO) Re-exportamos o TIPO Product para outros arquivos poderem usá-lo
+export type { Product };
+
 // Criamos a instância do Prisma Client que será usada em todo o projeto
 const prisma = new PrismaClient();
 

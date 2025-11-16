@@ -1,8 +1,16 @@
-import fs from 'fs/promises'; // Ainda precisamos do 'fs' para ler o arquivo
-import { PDFParse } from 'pdf-parse'; // 1. Importamos a nova biblioteca (com a sintaxe de namespace)
-import { findProductByName, disconnectDb } from './database.js';
+// --- MÓDULOS DE LEITURA ---
+import fs from 'fs/promises';
+import { PDFParse } from 'pdf-parse';
+import path from 'path';
 
-// Interface para definir como será nosso resultado (continua igual)
+// --- (NOVO) MÓDULO DE SIMILARIDADE ---
+import * as stringSimilarity from 'string-similarity';
+
+// --- MÓDULOS DO BANCO ---
+// (NOVO) Importamos 'listProducts' e 'Product'
+import { disconnectDb, listProducts, Product } from './database.js';
+
+// --- INTERFACE (não muda) ---
 interface OrcamentoItem {
     nomeBuscado: string;
     encontrado: boolean;
@@ -13,73 +21,125 @@ interface OrcamentoItem {
     };
 }
 
-// Função principal deste SCRIPT
-async function processarOrcamento() {
-    // 2. Mudamos o nome do arquivo que queremos ler
-    const caminhoDoArquivo = 'orcamento.pdf'; 
-    console.log(`[ORÇAMENTO PDF] Lendo arquivo: ${caminhoDoArquivo}`);
-
-    // --- ESTE BLOCO MUDOU ---
-        // 1. LER O ARQUIVO (AGORA COMO PDF)
-        let fileContent: string; // O resultado final (o texto puro)
-        try {
-            // Lemos o arquivo PDF como um 'buffer' (dados binários)
-            const fileBuffer = await fs.readFile(caminhoDoArquivo); 
-
-            // USANDO A NOVA API (v2+)
-            // 1. Criamos um 'parser' com a classe PDFParse
-            const parser = new PDFParse({ data: fileBuffer });
-
-            // 2. Chamamos o método .getText() para extrair o texto
-            const textResult = await parser.getText();
-
-            // O texto extraído está em 'textResult.text'
-            fileContent = textResult.text;
-
-        } catch (error) {
-        console.error(`[ORÇAMENTO PDF] ERRO: Não foi possível ler o arquivo PDF.`);
-        console.error(error);
-        return; // Sai do script
+// --- NOSSOS "MOTORES" DE LEITURA (não mudam) ---
+async function lerTxt(filePath: string): Promise<string> {
+    console.log('[ROTEADOR] Usando o leitor de TXT...');
+    try {
+        const fileContent = await fs.readFile(filePath, 'utf-8');
+        return fileContent;
+    } catch (e) {
+        console.error("Erro ao ler arquivo TXT:", e);
+        throw new Error("Falha ao ler TXT.");
     }
-    // --- FIM DO BLOCO QUE MUDOU ---
+}
 
+async function lerPdf(filePath: string): Promise<string> {
+    console.log('[ROTEADOR] Usando o leitor de PDF...');
+    try {
+        const fileBuffer = await fs.readFile(filePath);
+        const parser = new PDFParse({ data: fileBuffer });
+        const textResult = await parser.getText();
+        return textResult.text;
+    } catch (e) {
+        console.error("Erro ao ler arquivo PDF:", e);
+        throw new Error("Falha ao ler PDF.");
+    }
+}
 
-    // 2. PROCESSAR CONTEÚDO (DAQUI PARA BAIXO, NADA MUDA!)
-    console.log(`[ORÇAMENTO PDF] Texto extraído, processando ${fileContent.split('\n').length} linhas...`);
-    
+// --- FUNÇÃO PRINCIPAL (AGORA COM LÓGICA "FUZZY") ---
+async function processarOrcamento() {
+    // 1. PEGAR O NOME DO ARQUIVO DA LINHA DE COMANDO
+    const caminhoDoArquivo = process.argv[2]; 
+    if (!caminhoDoArquivo) {
+        console.error("ERRO: Você precisa especificar um arquivo para ler.");
+        console.log("Exemplo: npm run orcamento orcamento.pdf");
+        return;
+    }
+    console.log(`[ROTEADOR] Processando arquivo: ${caminhoDoArquivo}`);
+
+    // 2. ESCOLHER O "MOTOR" CORRETO
+    const extensao = path.extname(caminhoDoArquivo).toLowerCase();
+    let fileContent: string;
+    try {
+        if (extensao === '.txt') {
+            fileContent = await lerTxt(caminhoDoArquivo);
+        } else if (extensao === '.pdf') {
+            fileContent = await lerPdf(caminhoDoArquivo);
+        } else {
+            throw new Error(`Formato de arquivo não suportado: ${extensao}`);
+        }
+    } catch (error) {
+        if (error instanceof Error) {
+            console.error(`[ROTEADOR] Falha ao processar o arquivo: ${error.message}`);
+        }
+        return; 
+    }
+
+    // 3. PROCESSAR CONTEÚDO (limpeza não muda)
+    console.log(`[PROCESSADOR] Texto extraído, processando ${fileContent.split('\n').length} linhas...`);
     const productNames = fileContent.split('\n')
-                              .map(line => line.trim()) // Limpa espaços
-                              .filter(line => line.length > 0); // Remove linhas em branco
+                              .map(line => line.trim()) 
+                              .filter(line => line.length > 0) 
+                              .filter(line => !line.startsWith('--')); 
     
-    console.log(`[ORÇAMENTO PDF] Itens encontrados: ${productNames.join(', ')}`);
+    console.log(`[PROCESSADOR] Itens encontrados (limpos): ${productNames.join(', ')}`);
 
-    // 3. BUSCAR PREÇOS NO BANCO
+    // --- (NOVO) 4. LÓGICA DE BUSCA INTELIGENTE ---
+    console.log("[FUZZY] Carregando produtos do banco para comparação...");
+    
+    // a. Pegamos TODOS os produtos do banco (SÓ UMA VEZ)
+    const allProducts: Product[] = await listProducts();
+    // b. Criamos um array simples só com os nomes
+    const productNamesFromDb = allProducts.map(p => p.name);
+
+    if (productNamesFromDb.length === 0) {
+        console.error("[FUZZY] ERRO: Nenhum produto cadastrado no banco. Rode `npm run dev` primeiro.");
+        return;
+    }
+    console.log(`[FUZZY] Comparando ${productNames.length} itens contra ${productNamesFromDb.length} produtos do banco.`);
+
     const resultados: OrcamentoItem[] = [];
     let precoTotal = 0;
+    const confidenceThreshold = 0.5; // Nosso "limite de confiança" (50%)
 
-    for (const nome of productNames) {
-        const produto = await findProductByName(nome); 
+    // c. Para cada nome "sujo" do arquivo...
+    for (const nomeSujo of productNames) {
+        
+        // d. ...encontramos o "alvo" mais parecido no banco
+        const bestMatch = stringSimilarity.findBestMatch(nomeSujo, productNamesFromDb);
+        const bestRating = bestMatch.bestMatch.rating;
+        const bestTarget = bestMatch.bestMatch.target;
 
-        if (produto) {
-            resultados.push({
-                nomeBuscado: nome,
-                encontrado: true,
-                produto: { id: produto.id, nome: produto.name, preco: produto.price },
-            });
-            precoTotal += produto.price;
+        // e. Se a similaridade for maior que nosso limite...
+        if (bestRating > confidenceThreshold) {
+            
+            // f. ...buscamos o objeto completo do produto
+            const produto = allProducts.find(p => p.name === bestTarget);
+
+            if (produto) {
+                console.log(`[FUZZY] ✔️  "${nomeSujo}" | similar a | "${produto.name}" (${(bestRating * 100).toFixed(0)}%)`);
+                resultados.push({
+                    nomeBuscado: nomeSujo,
+                    encontrado: true,
+                    produto: { id: produto.id, nome: produto.name, preco: produto.price },
+                });
+                precoTotal += produto.price;
+            }
         } else {
+            // Se a similaridade for muito baixa, desistimos
+            console.log(`[FUZZY] ❌  "${nomeSujo}" | similar a | "${bestTarget}" (${(bestRating * 100).toFixed(0)}%) - BAIXA CONFIANÇA`);
             resultados.push({
-                nomeBuscado: nome,
+                nomeBuscado: nomeSujo,
                 encontrado: false,
             });
         }
     }
     
-    // 4. EXIBIR RELATÓRIO
-    console.log('\n--- Resultado do Orçamento (PDF) ---');
+    // 5. EXIBIR RELATÓRIO (não muda)
+    console.log('\n--- Resultado do Orçamento ---');
     resultados.forEach(item => {
         if (item.encontrado && item.produto) {
-            console.log(`✔️ ${item.produto.nome} | Preço: R$ ${item.produto.preco.toFixed(2)}`);
+            console.log(`✔️ ${item.produto.nome} (Item: "${item.nomeBuscado}") | Preço: R$ ${item.produto.preco.toFixed(2)}`);
         } else {
             console.log(`❌ Não encontrado: "${item.nomeBuscado}"`);
         }
@@ -92,110 +152,8 @@ async function processarOrcamento() {
 // --- Ponto de entrada do Script ---
 processarOrcamento()
     .catch(e => {
-        console.error('[ORÇAMENTO PDF] Ocorreu um erro fatal:', e);
+        console.error('[ROTEADOR] Ocorreu um erro fatal:', e);
     })
     .finally(async () => {
         await disconnectDb();
     });
-
-
-
-
-
-
-
-
-
-
-/*import fs from 'fs/promises'; // Módulo nativo do Node para ler arquivos
-//Importamos SÓ o que precisamos do nosso database
-import { findProductByName, disconnectDb } from './database.js';
-
-//Interface para definir como será nosso resultado
-interface OrcamentoItem {
-    nomeBuscado: string;
-    encontrado: boolean;
-    produto?: {
-        id: number;
-        nome: string;
-        preco: number;
-    };
-}
-
-// FUnção principal deste SCRIPT
-async function processarOrcamento() {
-    const caminhoDoArquivo = 'lista_orcamento.txt'; // O arquivo .txt na raiz
-    console.log(`[ORÇAMENTO] Lendo arquivo: ${caminhoDoArquivo}`);
-
-    //1. Ler o ARQUIVO
-    let fileContent: string;
-    try {
-        fileContent = await fs.readFile(caminhoDoArquivo, 'utf-8');
-    } catch (error) {
-        console.error(`[ORÇAMENTO] ERRO: Não foi possível ler o arquivo.`);
-        console.error("Verifique se o arquivo 'lista_orcamento.txt' exoste na raiz do projeto.");
-        return; // Sai do script
-    }
-
-    //2. PROCESSAR CONTEÚDO
-    // Quebra o arquivo em linhas, remove espaços e linhas em branco
-    const productNames = fileContent.split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
-    
-    console.log(`[ORÇAMENTO] Itens encontrados no arquivo: ${productNames.join(', ')}`);
-
-    //3. BUSCAR PREÇOS NO BANCO
-    const resultados: OrcamentoItem[] = [];
-    let precoTotal = 0;
-
-    // Usamos 'for... of' para poder usar 'await' dentro dele
-    for (const nome of productNames) {
-        const produto = await findProductByName(nome); // Usamos a função do database.ts
-
-        if (produto) {
-            //Produto ENCONTRADO
-            resultados.push({
-                nomeBuscado: nome,
-                encontrado: true,
-                produto: {
-                    id: produto.id,
-                    nome: produto.name,
-                    preco: produto.price,
-                },
-            });
-            precoTotal += produto.price; // Adiciona o total
-        } else{
-            // Produto NÃO ENCONTRADO
-            resultados.push({
-                nomeBuscado: nome,
-                encontrado: false,
-            });
-        }
-    }
-
-    //4. EXIBIR RELATÓRIO
-    console.log('\n-- RESULTADO DO ORÇAMENTO --');
-    resultados.forEach(item => {
-        if (item.encontrado && item.produto) {
-            console.log(`✔️ ${item.produto.nome} | Preço: R$ ${item.produto.preco.toFixed(2)}`);
-        } else {
-            console.log(`❌ Não encontrado: "${item.nomeBuscado}"`);
-        }
-    });
-    console.log('---------------------------');
-    console.log(`VALOR TOTAL DO ORÇAMENTO: R$ ${precoTotal.toFixed(2)}`);
-    console.log('---------------------------');
-}
-
-// --- Ponto de entrada do Script ---
-processarOrcamento()
-    .catch(e => {
-        console.error('[ORÇAMENTO] Ocorreu um erro fatal: ', e);
-    })
-    .finally(async () => {
-        // ESSENCIAL: Todo script que usa banco deve fechar a conexão
-        await disconnectDb();
-    });
-
-*/
