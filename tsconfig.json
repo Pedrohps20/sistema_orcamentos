@@ -4,6 +4,8 @@
     "module": "nodenext", // O módulo de node que entende "type": "module"
     "rootDir": "./src", // Todo nosso código-fonte ficará na pasta 'src'
 
+    "esModuleInterop": true,
+
     "strict": true, // Habilita todas as regras mais rígidas do TS
     "skipLibCheck": true, // Não checar os tipos das bibliotecas (mais rápido)
     "forceConsistentCasingInFileNames": true

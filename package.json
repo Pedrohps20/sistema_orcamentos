@@ -4,7 +4,8 @@
   "description": "Projeto Inicial",
   "main": "index.js",
   "scripts": {
-    "dev": "node --loader ts-node/esm src/index.ts"
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "orcamento": "node --loader ts-node/esm src/lerOrcamento.ts"
   },
   "repository": {
     "type": "git",
@@ -19,7 +20,8 @@
   },
   "homepage": "https://github.com/Pedrohps20/sistema_orcamentos#readme",
   "dependencies": {
-    "@prisma/client": "^6.19.0"
+    "@prisma/client": "^6.19.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
