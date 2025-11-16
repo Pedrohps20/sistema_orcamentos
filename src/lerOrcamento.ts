@@ -1,5 +1,5 @@
 import fs from 'fs/promises'; // Ainda precisamos do 'fs' para ler o arquivo
-import pdfParse from 'pdf-parse' // 1. Importamos a nova biblioteca (com a sintaxe de namespace)
+import { PDFParse } from 'pdf-parse'; // 1. Importamos a nova biblioteca (com a sintaxe de namespace)
 import { findProductByName, disconnectDb } from './database.js';
 
 // Interface para definir como será nosso resultado (continua igual)
@@ -20,20 +20,23 @@ async function processarOrcamento() {
     console.log(`[ORÇAMENTO PDF] Lendo arquivo: ${caminhoDoArquivo}`);
 
     // --- ESTE BLOCO MUDOU ---
-    // 1. LER O ARQUIVO (AGORA COMO PDF)
-    let fileContent: string; // O resultado final (o texto puro)
-    try {
-        // Lemos o arquivo PDF como um 'buffer' (dados binários)
-        // Note que removemos o 'utf-8'
-        const fileBuffer = await fs.readFile(caminhoDoArquivo); 
+        // 1. LER O ARQUIVO (AGORA COMO PDF)
+        let fileContent: string; // O resultado final (o texto puro)
+        try {
+            // Lemos o arquivo PDF como um 'buffer' (dados binários)
+            const fileBuffer = await fs.readFile(caminhoDoArquivo); 
 
-        // Usamos o pdf-parse para ler o buffer
-        const data = await pdfParse(fileBuffer)
-        
-        // O texto extraído está em 'data.text'
-        fileContent = data.text;
+            // USANDO A NOVA API (v2+)
+            // 1. Criamos um 'parser' com a classe PDFParse
+            const parser = new PDFParse({ data: fileBuffer });
 
-    } catch (error) {
+            // 2. Chamamos o método .getText() para extrair o texto
+            const textResult = await parser.getText();
+
+            // O texto extraído está em 'textResult.text'
+            fileContent = textResult.text;
+
+        } catch (error) {
         console.error(`[ORÇAMENTO PDF] ERRO: Não foi possível ler o arquivo PDF.`);
         console.error(error);
         return; // Sai do script
