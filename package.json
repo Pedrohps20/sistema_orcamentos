@@ -21,6 +21,7 @@
   "homepage": "https://github.com/Pedrohps20/sistema_orcamentos#readme",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "mammoth": "^1.11.0",
     "pdf-parse": "^2.4.5",
     "string-similarity": "^4.0.4"
   },

@@ -2,6 +2,7 @@
 import fs from 'fs/promises';
 import { PDFParse } from 'pdf-parse';
 import path from 'path';
+import mammoth from 'mammoth';
 
 // --- (NOVO) MÓDULO DE SIMILARIDADE ---
 import * as stringSimilarity from 'string-similarity';
@@ -46,6 +47,19 @@ async function lerPdf(filePath: string): Promise<string> {
     }
 }
 
+// "Motor" para ler arquivos .docx
+async function lerDocx(filePath: string): Promise<string> {
+    console.log('[ROTEADOR] Usando o leitor de DOCX...');
+    try {
+        // O mammoth lê o arquivo e extrai o texto puro
+        const result = await mammoth.extractRawText({ path: filePath });
+        return result.value; // O texto está na propriedade .value
+    } catch (e) {
+        console.error("Erro ao ler arquivo DOCX:", e);
+        throw new Error("Falha ao ler DOCX.");
+    }
+}
+
 // --- FUNÇÃO PRINCIPAL (AGORA COM LÓGICA "FUZZY") ---
 async function processarOrcamento() {
     // 1. PEGAR O NOME DO ARQUIVO DA LINHA DE COMANDO
@@ -65,6 +79,8 @@ async function processarOrcamento() {
             fileContent = await lerTxt(caminhoDoArquivo);
         } else if (extensao === '.pdf') {
             fileContent = await lerPdf(caminhoDoArquivo);
+        } else if (extensao === '.docx'){
+            fileContent = await lerDocx(caminhoDoArquivo);
         } else {
             throw new Error(`Formato de arquivo não suportado: ${extensao}`);
         }
@@ -100,7 +116,7 @@ async function processarOrcamento() {
 
     const resultados: OrcamentoItem[] = [];
     let precoTotal = 0;
-    const confidenceThreshold = 0.5; // Nosso "limite de confiança" (50%)
+    const confidenceThreshold = 0.3; // Nosso "limite de confiança" (50%)
 
     // c. Para cada nome "sujo" do arquivo...
     for (const nomeSujo of productNames) {
