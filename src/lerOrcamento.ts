@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import { PDFParse } from 'pdf-parse';
 import path from 'path';
 import mammoth from 'mammoth';
+import { createWorker } from 'tesseract.js';
 
 // --- (NOVO) MÓDULO DE SIMILARIDADE ---
 import * as stringSimilarity from 'string-similarity';
@@ -60,6 +61,28 @@ async function lerDocx(filePath: string): Promise<string> {
     }
 }
 
+// "Motor" para ler IMAGENS (ORC)
+async function lerImagem(filePath: string): Promise<string> {
+    console.log('[ROTEADOR] Usando o leitor de IMAGEM (OCR)...');
+    console.log('[ORC] Inicializando motor (pode demorar na primeira vez)...');
+
+    try {
+        // Criamos o worker para português ('por')
+        const worker = await createWorker('por');
+
+        // Reconhecemos o texto da imagem
+        const ret = await worker.recognize(filePath);
+        const textoExtraido = ret.data.text;
+
+        await worker.terminate(); // Desligamos o worker
+
+        return textoExtraido;
+    } catch (e) {
+        console.error("Erro ao ler Imagem:", e);
+        throw new Error("Falha ao ler Imagem.");
+    }
+}
+
 // --- FUNÇÃO PRINCIPAL (AGORA COM LÓGICA "FUZZY") ---
 async function processarOrcamento() {
     // 1. PEGAR O NOME DO ARQUIVO DA LINHA DE COMANDO
@@ -81,6 +104,8 @@ async function processarOrcamento() {
             fileContent = await lerPdf(caminhoDoArquivo);
         } else if (extensao === '.docx'){
             fileContent = await lerDocx(caminhoDoArquivo);
+        } else if (['.png', '.jpg', '.jpeg'].includes(extensao)) {
+            fileContent = await lerImagem(caminhoDoArquivo);
         } else {
             throw new Error(`Formato de arquivo não suportado: ${extensao}`);
         }

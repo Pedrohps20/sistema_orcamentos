@@ -23,7 +23,8 @@
     "@prisma/client": "^6.19.0",
     "mammoth": "^1.11.0",
     "pdf-parse": "^2.4.5",
-    "string-similarity": "^4.0.4"
+    "string-similarity": "^4.0.4",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
