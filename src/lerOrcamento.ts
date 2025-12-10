@@ -83,6 +83,28 @@ async function lerImagem(filePath: string): Promise<string> {
     }
 }
 
+// Função auxiliar para extrair quantidade e limpar o nome
+function extrairDados(linha: string): { quantidade: number, nomeLimpo: string } {
+    // 1. Tenta encontrar padrões de quantidade (ex: "2 unid", "01 caderno", "2x")
+    const regexQuantidade = /(\d+)\s*(unid|un|cx|caixa|pct|pacote|fls|folhas|x)?/i;
+    const match = linha.match(regexQuantidade);
+
+    let quantidade = 1; // Se não achar número, assume 1
+    if (match && match[1]) {
+        quantidade = parseInt(match[1], 10);
+    }
+
+    // 2. Limpa o nome do produto (remove o número e palavras inúteis)
+    let nomeLimpo = linha
+        .replace(regexQuantidade, '') // Remove a quantidade
+        .replace(/[*•\->;).,|O°º]/g, '') // Remove caracteres especiais e marcadores
+        .replace(/\b(unid|un|cx|caixa|pct|pacote|fls|folhas|grande|pequeno|escolar|infantil)\b/gi, '')
+        .replace(/\s+/g, ' ') // Remove espaços duplos
+        .trim(); 
+
+    return { quantidade, nomeLimpo };
+}
+
 // --- FUNÇÃO PRINCIPAL (AGORA COM LÓGICA "FUZZY") ---
 async function processarOrcamento() {
     // 1. PEGAR O NOME DO ARQUIVO DA LINHA DE COMANDO
@@ -143,34 +165,46 @@ async function processarOrcamento() {
     let precoTotal = 0;
     const confidenceThreshold = 0.3; // Nosso "limite de confiança" (50%)
 
-    // c. Para cada nome "sujo" do arquivo...
-    for (const nomeSujo of productNames) {
+    // c. Para cada linha "suja" do arquivo...
+    for (const linhaSuja of productNames) {
         
-        // d. ...encontramos o "alvo" mais parecido no banco
-        const bestMatch = stringSimilarity.findBestMatch(nomeSujo, productNamesFromDb);
+        // --- (NOVO) Usamos nossa função para separar Qtd e Nome ---
+        const { quantidade, nomeLimpo } = extrairDados(linhaSuja);
+
+        // Se o nome ficou vazio ou muito curto (era só sujeira), pula
+        if (nomeLimpo.length < 3) continue;
+
+        // d. Buscamos o "alvo" mais parecido no banco USANDO O NOME LIMPO
+        const bestMatch = stringSimilarity.findBestMatch(nomeLimpo, productNamesFromDb);
         const bestRating = bestMatch.bestMatch.rating;
         const bestTarget = bestMatch.bestMatch.target;
 
-        // e. Se a similaridade for maior que nosso limite...
+        // e. Se a similaridade for boa (maior que 30%)...
         if (bestRating > confidenceThreshold) {
             
-            // f. ...buscamos o objeto completo do produto
             const produto = allProducts.find(p => p.name === bestTarget);
 
             if (produto) {
-                console.log(`[FUZZY] ✔️  "${nomeSujo}" | similar a | "${produto.name}" (${(bestRating * 100).toFixed(0)}%)`);
+                // Calculamos o preço total (Preço x Quantidade)
+                const precoTotalItem = produto.price * quantidade;
+                
+                console.log(`[FUZZY] ✔️  "${nomeLimpo}" (Qtd: ${quantidade}) -> "${produto.name}" (${(bestRating * 100).toFixed(0)}%)`);
+                
                 resultados.push({
-                    nomeBuscado: nomeSujo,
+                    nomeBuscado: linhaSuja, 
                     encontrado: true,
-                    produto: { id: produto.id, nome: produto.name, preco: produto.price },
+                    produto: { 
+                        id: produto.id, 
+                        nome: produto.name, 
+                        preco: precoTotalItem // Salvamos o preço já multiplicado!
+                    },
                 });
-                precoTotal += produto.price;
+                precoTotal += precoTotalItem;
             }
         } else {
-            // Se a similaridade for muito baixa, desistimos
-            console.log(`[FUZZY] ❌  "${nomeSujo}" | similar a | "${bestTarget}" (${(bestRating * 100).toFixed(0)}%) - BAIXA CONFIANÇA`);
-            resultados.push({
-                nomeBuscado: nomeSujo,
+            console.log(`[FUZZY] ❌  "${nomeLimpo}" -> "${bestTarget}" (${(bestRating * 100).toFixed(0)}%) - REJEITADO`);
+             resultados.push({
+                nomeBuscado: linhaSuja,
                 encontrado: false,
             });
         }
