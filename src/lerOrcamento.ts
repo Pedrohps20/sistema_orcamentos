@@ -83,24 +83,48 @@ async function lerImagem(filePath: string): Promise<string> {
     }
 }
 
-// Função auxiliar para extrair quantidade e limpar o nome
+// Função auxiliar v2.0: Mais inteligente para distinguir Qtd de Atributo
 function extrairDados(linha: string): { quantidade: number, nomeLimpo: string } {
-    // 1. Tenta encontrar padrões de quantidade (ex: "2 unid", "01 caderno", "2x")
-    const regexQuantidade = /(\d+)\s*(unid|un|cx|caixa|pct|pacote|fls|folhas|x)?/i;
-    const match = linha.match(regexQuantidade);
+    // 1. Definição do que NÃO É quantidade (blacklist)
+    const regexAtributos = /\d+\s*(fls|folhas|cores|g|kg|ml|mm|cm|m|gramas)\b/gi;
 
-    let quantidade = 1; // Se não achar número, assume 1
-    if (match && match[1]) {
-        quantidade = parseInt(match[1], 10);
+    // 2. Definição do que É quantidade explicitamente (whitelist)
+    const regexQtdExplicita = /(\d+)\s*(unid|un|cx|caixa|pct|pacote|peça|pç|x)\b/i;
+
+    let quantidade = 1;
+    let nomeLimpo = linha;
+
+    // ESTRATÉGIA 1: Procurar quantidade explícita ("2 unid", "3x")
+    const matchExplicito = linha.match(regexQtdExplicita);
+    if (matchExplicito && matchExplicito[1]) {
+        quantidade = parseInt(matchExplicito[1], 10);
+        // Removemos a parte da quantidade do texto para não atrapalhar a busca
+        nomeLimpo = nomeLimpo.replace(regexQtdExplicita, '');
+    } 
+    // ESTRATÉGIA 2: Se não achou explícito, vê se a linha COMEÇA com um número solto
+    else {
+        const matchInicio = linha.match(/^(\d+)\s+/);
+        if (matchInicio && matchInicio[1]) {
+            const numero = parseInt(matchInicio[1], 10);
+            
+            // Verificamos se esse número inicial é um atributo proibido
+            const ehAtributo = linha.match(/^(\d+)\s*(fls|folhas|cores|g|kg|ml)/i);
+            
+            if (!ehAtributo) {
+                // Se não for atributo (tipo folhas), então é quantidade!
+                quantidade = numero;
+                nomeLimpo = nomeLimpo.replace(/^(\d+)\s+/, '');
+            }
+        }
     }
 
-    // 2. Limpa o nome do produto (remove o número e palavras inúteis)
-    let nomeLimpo = linha
-        .replace(regexQuantidade, '') // Remove a quantidade
-        .replace(/[*•\->;).,|O°º]/g, '') // Remove caracteres especiais e marcadores
-        .replace(/\b(unid|un|cx|caixa|pct|pacote|fls|folhas|grande|pequeno|escolar|infantil)\b/gi, '')
+    // 3. Limpeza Geral: Removemos atributos numéricos e lixo para facilitar o Match
+    nomeLimpo = nomeLimpo
+        .replace(regexAtributos, '') // Remove "96 fls", "12 cores"
+        .replace(/[*•\->;).,|O°º]/g, '') // Remove marcadores e pontuação
+        .replace(/\b(unid|un|cx|caixa|pct|pacote|fls|folhas|grande|pequeno|escolar|infantil)\b/gi, '') // Palavras ruído
         .replace(/\s+/g, ' ') // Remove espaços duplos
-        .trim(); 
+        .trim();
 
     return { quantidade, nomeLimpo };
 }
