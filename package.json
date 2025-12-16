@@ -21,12 +21,18 @@
   "homepage": "https://github.com/Pedrohps20/sistema_orcamentos#readme",
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
     "mammoth": "^1.11.0",
+    "multer": "^2.0.2",
     "pdf-parse": "^2.4.5",
     "string-similarity": "^4.0.4",
     "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
     "@types/node": "^24.10.1",
     "@types/string-similarity": "^4.0.2",
     "prisma": "^6.19.0",

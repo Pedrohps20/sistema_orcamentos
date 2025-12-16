@@ -129,20 +129,17 @@ function extrairDados(linha: string): { quantidade: number, nomeLimpo: string } 
     return { quantidade, nomeLimpo };
 }
 
-// --- FUNÇÃO PRINCIPAL (AGORA COM LÓGICA "FUZZY") ---
-async function processarOrcamento() {
-    // 1. PEGAR O NOME DO ARQUIVO DA LINHA DE COMANDO
-    const caminhoDoArquivo = process.argv[2]; 
-    if (!caminhoDoArquivo) {
-        console.error("ERRO: Você precisa especificar um arquivo para ler.");
-        console.log("Exemplo: npm run orcamento orcamento.pdf");
-        return;
-    }
+// ... (mantenha todas as importações e funções auxiliares lerTxt, lerPdf, lerImagem, extrairDados IGUAIS)
+
+// --- FUNÇÃO PRINCIPAL REUTILIZÁVEL ---
+// Agora ela aceita o caminho como parâmetro e RETORNA os dados
+export async function processarOrcamento(caminhoDoArquivo: string) {
     console.log(`[ROTEADOR] Processando arquivo: ${caminhoDoArquivo}`);
 
-    // 2. ESCOLHER O "MOTOR" CORRETO
     const extensao = path.extname(caminhoDoArquivo).toLowerCase();
     let fileContent: string;
+
+    // (Lógica de seleção de motor continua igual...)
     try {
         if (extensao === '.txt') {
             fileContent = await lerTxt(caminhoDoArquivo);
@@ -156,103 +153,69 @@ async function processarOrcamento() {
             throw new Error(`Formato de arquivo não suportado: ${extensao}`);
         }
     } catch (error) {
-        if (error instanceof Error) {
-            console.error(`[ROTEADOR] Falha ao processar o arquivo: ${error.message}`);
-        }
-        return; 
+        // Se der erro, repassamos para quem chamou a função
+        throw error;
     }
 
-    // 3. PROCESSAR CONTEÚDO (limpeza não muda)
-    console.log(`[PROCESSADOR] Texto extraído, processando ${fileContent.split('\n').length} linhas...`);
+    // (Lógica de processamento continua igual...)
     const productNames = fileContent.split('\n')
                               .map(line => line.trim()) 
                               .filter(line => line.length > 0) 
                               .filter(line => !line.startsWith('--')); 
-    
-    console.log(`[PROCESSADOR] Itens encontrados (limpos): ${productNames.join(', ')}`);
 
-    // --- (NOVO) 4. LÓGICA DE BUSCA INTELIGENTE ---
-    console.log("[FUZZY] Carregando produtos do banco para comparação...");
-    
-    // a. Pegamos TODOS os produtos do banco (SÓ UMA VEZ)
+    // Carregar produtos (continua igual...)
     const allProducts: Product[] = await listProducts();
-    // b. Criamos um array simples só com os nomes
     const productNamesFromDb = allProducts.map(p => p.name);
-
-    if (productNamesFromDb.length === 0) {
-        console.error("[FUZZY] ERRO: Nenhum produto cadastrado no banco. Rode `npm run dev` primeiro.");
-        return;
-    }
-    console.log(`[FUZZY] Comparando ${productNames.length} itens contra ${productNamesFromDb.length} produtos do banco.`);
 
     const resultados: OrcamentoItem[] = [];
     let precoTotal = 0;
-    const confidenceThreshold = 0.3; // Nosso "limite de confiança" (50%)
+    const confidenceThreshold = 0.3;
 
-    // c. Para cada linha "suja" do arquivo...
+    // Loop de Fuzzy Match (continua igual...)
     for (const linhaSuja of productNames) {
-        
-        // --- (NOVO) Usamos nossa função para separar Qtd e Nome ---
         const { quantidade, nomeLimpo } = extrairDados(linhaSuja);
-
-        // Se o nome ficou vazio ou muito curto (era só sujeira), pula
         if (nomeLimpo.length < 3) continue;
 
-        // d. Buscamos o "alvo" mais parecido no banco USANDO O NOME LIMPO
         const bestMatch = stringSimilarity.findBestMatch(nomeLimpo, productNamesFromDb);
         const bestRating = bestMatch.bestMatch.rating;
         const bestTarget = bestMatch.bestMatch.target;
 
-        // e. Se a similaridade for boa (maior que 30%)...
         if (bestRating > confidenceThreshold) {
-            
             const produto = allProducts.find(p => p.name === bestTarget);
-
             if (produto) {
-                // Calculamos o preço total (Preço x Quantidade)
                 const precoTotalItem = produto.price * quantidade;
-                
-                console.log(`[FUZZY] ✔️  "${nomeLimpo}" (Qtd: ${quantidade}) -> "${produto.name}" (${(bestRating * 100).toFixed(0)}%)`);
-                
                 resultados.push({
                     nomeBuscado: linhaSuja, 
                     encontrado: true,
-                    produto: { 
-                        id: produto.id, 
-                        nome: produto.name, 
-                        preco: precoTotalItem // Salvamos o preço já multiplicado!
-                    },
+                    produto: { id: produto.id, nome: produto.name, preco: precoTotalItem } // Preço total do item
                 });
                 precoTotal += precoTotalItem;
             }
         } else {
-            console.log(`[FUZZY] ❌  "${nomeLimpo}" -> "${bestTarget}" (${(bestRating * 100).toFixed(0)}%) - REJEITADO`);
-             resultados.push({
-                nomeBuscado: linhaSuja,
-                encontrado: false,
-            });
+             resultados.push({ nomeBuscado: linhaSuja, encontrado: false });
         }
     }
     
-    // 5. EXIBIR RELATÓRIO (não muda)
-    console.log('\n--- Resultado do Orçamento ---');
-    resultados.forEach(item => {
-        if (item.encontrado && item.produto) {
-            console.log(`✔️ ${item.produto.nome} (Item: "${item.nomeBuscado}") | Preço: R$ ${item.produto.preco.toFixed(2)}`);
-        } else {
-            console.log(`❌ Não encontrado: "${item.nomeBuscado}"`);
-        }
-    });
-    console.log('------------------------------');
-    console.log(`TOTAL DO ORÇAMENTO: R$ ${precoTotal.toFixed(2)}`);
-    console.log('------------------------------');
+    // --- MUDANÇA FINAL: RETORNAR O RESULTADO ---
+    // Em vez de só imprimir, retornamos um objeto
+    return {
+        itens: resultados,
+        total: precoTotal
+    };
 }
 
-// --- Ponto de entrada do Script ---
-processarOrcamento()
-    .catch(e => {
-        console.error('[ROTEADOR] Ocorreu um erro fatal:', e);
-    })
-    .finally(async () => {
-        await disconnectDb();
-    });
+// --- CHECAGEM PARA RODAR NO TERMINAL ---
+// Se este arquivo for executado diretamente (não importado), roda a lógica do terminal
+import { fileURLToPath } from 'url';
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const arquivo = process.argv[2];
+    if (arquivo) {
+        processarOrcamento(arquivo)
+            .then(resultado => {
+                console.log('--- ORÇAMENTO VIA TERMINAL ---');
+                console.log(JSON.stringify(resultado, null, 2)); // Mostra o JSON bonito
+            })
+            .catch(console.error)
+            .finally(() => disconnectDb());
+    }
+}
