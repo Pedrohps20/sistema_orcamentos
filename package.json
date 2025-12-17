@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "node --loader ts-node/esm src/index.ts",
-    "orcamento": "node --loader ts-node/esm src/lerOrcamento.ts"
+    "orcamento": "node --loader ts-node/esm src/lerOrcamento.ts",
+    "start": "node --loader ts-node/esm src/server.ts"
   },
   "repository": {
     "type": "git",

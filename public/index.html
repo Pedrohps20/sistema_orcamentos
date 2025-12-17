@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Orçamentos Inteligente</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --text: #1f2937;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .card {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 1.5rem 0;
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary);
+            background-color: #eef2ff;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        /* Tabela de Resultados */
+        .resultado-container {
+            display: none; /* Escondido por padrão */
+            animation: fadeIn 0.5s;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+
+        .status-ok { color: #059669; font-weight: bold; }
+        .status-erro { color: #dc2626; font-weight: bold; }
+        
+        .total-row {
+            font-size: 1.2rem;
+            font-weight: bold;
+            background-color: #f3f4f6;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card">
+            <h1>📄 Gerador de Orçamento</h1>
+            <p style="text-align: center; color: #6b7280;">Envie uma lista (PDF, Word, Imagem ou TXT) para calcular.</p>
+            
+            <form id="orcamentoForm">
+                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                    <p>📂 Clique para escolher ou arraste o arquivo aqui</p>
+                    <input type="file" id="fileInput" name="arquivo" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg" style="display: none" onchange="mostrarNomeArquivo()">
+                    <p id="fileName" style="font-weight: bold; color: var(--primary); margin-top: 10px;"></p>
+                </div>
+                <button type="submit" id="btnGerar">Gerar Orçamento</button>
+            </form>
+
+            <div class="loading" id="loadingIndicator">
+                ⚙️ Processando arquivo e lendo imagem... aguarde...
+            </div>
+        </div>
+
+        <div class="card resultado-container" id="resultadoCard">
+            <h2>💰 Orçamento Final</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Item da Lista</th>
+                        <th>Produto Encontrado</th>
+                        <th>Preço</th>
+                    </tr>
+                </thead>
+                <tbody id="tabelaCorpo">
+                    </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="2" style="text-align: right;">Total:</td>
+                        <td id="valorTotal">R$ 0,00</td>
+                    </tr>
+                </tfoot>
+            </table>
+            <button onclick="window.print()" style="margin-top: 20px; background-color: #4b5563;">🖨️ Imprimir / Salvar PDF</button>
+        </div>
+    </div>
+
+    <script>
+        function mostrarNomeArquivo() {
+            const input = document.getElementById('fileInput');
+            const fileNameDisplay = document.getElementById('fileName');
+            if (input.files.length > 0) {
+                fileNameDisplay.textContent = "Selecionado: " + input.files[0].name;
+            }
+        }
+
+        document.getElementById('orcamentoForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const input = document.getElementById('fileInput');
+            if (input.files.length === 0) {
+                alert("Por favor, selecione um arquivo!");
+                return;
+            }
+
+            // UI Loading
+            const btn = document.getElementById('btnGerar');
+            const loading = document.getElementById('loadingIndicator');
+            const resultCard = document.getElementById('resultadoCard');
+            
+            btn.disabled = true;
+            loading.style.display = 'block';
+            resultCard.style.display = 'none';
+
+            // Preparar dados
+            const formData = new FormData();
+            formData.append('arquivo', input.files[0]);
+
+            try {
+                // CHAMADA AO SEU SERVIDOR (BACKEND)
+                const response = await fetch('/api/orcamento', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Erro no servidor');
+
+                const data = await response.json();
+                
+                // Renderizar Tabela
+                const tbody = document.getElementById('tabelaCorpo');
+                tbody.innerHTML = ''; // Limpa anterior
+
+                data.itens.forEach(item => {
+                    const tr = document.createElement('tr');
+                    
+                    if (item.encontrado) {
+                        tr.innerHTML = `
+                            <td>${item.nomeBuscado}</td>
+                            <td class="status-ok">✔️ ${item.produto.nome}</td>
+                            <td>R$ ${item.produto.preco.toFixed(2)}</td>
+                        `;
+                    } else {
+                        tr.innerHTML = `
+                            <td style="color: #9ca3af;">${item.nomeBuscado}</td>
+                            <td class="status-erro">❌ Não encontrado</td>
+                            <td>-</td>
+                        `;
+                    }
+                    tbody.appendChild(tr);
+                });
+
+                // Atualizar Total
+                document.getElementById('valorTotal').textContent = `R$ ${data.total.toFixed(2)}`;
+                
+                // Mostrar resultado
+                resultCard.style.display = 'block';
+
+            } catch (error) {
+                alert("Ocorreu um erro ao processar: " + error.message);
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
